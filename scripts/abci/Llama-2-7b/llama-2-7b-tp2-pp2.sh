@@ -151,6 +151,7 @@ mpirun -np $NUM_GPUS \
   --recompute-activations \
   --recompute-granularity "selective" \
   --use-mpi \
+  --log-throughput \
   --wandb-name ${JOB_NAME} \
   --wandb-project "llm-book" \
   --wandb-entity "okoge"
