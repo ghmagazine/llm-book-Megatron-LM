@@ -7,14 +7,13 @@
 
 # module load
 source /etc/profile.d/modules.sh
-module use path/to/modules/modulefiles/
-module use /apps/modules-abci-2.0-2022/modulefiles/rhel8/compilers
+module use /bb/llm/gaf51275/modules/modulefiles
 
 module load cuda/12.1/12.1.1
 module load cudnn/cuda-12.1/8.9.7
 module load nccl/2.17/2.17.1-1
 module load hpcx/2.12
-module load gcc/11.2.0
+module load gcc/11.4.0
 
 # python virtualenv
 source .env/bin/activate
@@ -27,6 +26,7 @@ pip install -r requirements.txt
 pip install zarr tensorstore
 
 # apex install
+cd ..
 git clone git@github.com:NVIDIA/apex.git
 cd apex
 

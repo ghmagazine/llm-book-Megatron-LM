@@ -1,8 +1,8 @@
 pybind11
 
 --find-links https://download.pytorch.org/whl/torch_stable.html
-torch==2.2.0+cu118
-torchvision==0.17.0+cu118
+torch==2.3.1+cu121
+torchvision==0.18.1+cu121
 
 six
 regex
@@ -15,7 +15,7 @@ tensorboard
 # mpirun
 mpi4py
 
-# tokenizer v2
+# tokenizer
 sentencepiece
 
 # tokenize

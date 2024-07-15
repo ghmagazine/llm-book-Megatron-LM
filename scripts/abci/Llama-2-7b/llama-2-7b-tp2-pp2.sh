@@ -7,14 +7,13 @@
 
 # module load
 source /etc/profile.d/modules.sh
-module use path/to/modules/modulefiles/
-module use /apps/modules-abci-2.0-2022/modulefiles/rhel8/compilers
+module use /bb/llm/gaf51275/modules/modulefiles
 
 module load cuda/12.1/12.1.1
 module load cudnn/cuda-12.1/8.9.7
 module load nccl/2.17/2.17.1-1
 module load hpcx/2.12
-module load gcc/11.2.0
+module load gcc/11.4.0
 
 # python virtualenv
 source .env/bin/activate
@@ -72,23 +71,18 @@ WEIGHT_DECAY=0.1
 GRAD_CLIP=1
 
 # model config
-TOKENIZER_MODEL=
-CHECKPOINT_SAVE_DIR=
+TOKENIZER_MODEL=/groups/gag51395/hf-checkpoints/Llama-2-7b-hf/tokenizer.model
+CHECKPOINT_SAVE_DIR=/groups/gag51395/checkpoints/Llama-2-7b/tp${TENSOR_PARALLEL_SIZE}-pp${PIPELINE_PARALLEL_SIZE}/llm-book/
 
 mkdir -p ${CHECKPOINT_SAVE_DIR}
 
 # data config
-DATASET_DIR=
-
-DATA_PATH=""
-
-# data config
-DATASET_DIR=<path/to/dataset/>
+DATASET_DIR=/groups/gag51395/datasets/binarized/llm-book
 
 TRAIN_DATA_PATH=""
 
 # japanese wikipedia
-TRAIN_DATA_PATH="${TRAIN_DATA_PATH} 3090031262 ${DATASET_DIR}/ja_wiki_text_document"
+TRAIN_DATA_PATH="${TRAIN_DATA_PATH} 1 ${DATASET_DIR}/ja_wiki_text_document"
 
 # job name
 JOB_NAME="Llama-2-7b-${NODE_TYPE}-${NUM_NODES}node-${NUM_GPUS}gpu"
@@ -109,7 +103,6 @@ mpirun -np $NUM_GPUS \
   python pretrain_gpt.py \
   --tensor-model-parallel-size ${TENSOR_PARALLEL_SIZE} \
   --pipeline-model-parallel-size ${PIPELINE_PARALLEL_SIZE} \
-  --sequence-parallel \
   --use-distributed-optimizer \
   --num-layers ${NUM_LAYERS} \
   --hidden-size ${HIDDEN_SIZE} \
@@ -142,11 +135,13 @@ mpirun -np $NUM_GPUS \
   --bf16 \
   --untie-embeddings-and-output-weights \
   --use-rotary-position-embeddings \
+  --no-position-embedding \
+  --position-embedding-type rope \
+  --use-mcore-models \
   --normalization RMSNorm \
   --norm-epsilon 1e-5 \
   --no-position-embedding \
   --no-masked-softmax-fusion \
-  --no-query-key-layer-scaling \
   --attention-dropout 0.0 \
   --hidden-dropout 0.0 \
   --disable-bias-linear \
@@ -158,4 +153,4 @@ mpirun -np $NUM_GPUS \
   --use-mpi \
   --wandb-name ${JOB_NAME} \
   --wandb-project "llm-book" \
-  --wandb-entity "user-name"
+  --wandb-entity "okoge"
