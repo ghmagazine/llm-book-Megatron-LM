@@ -1,5 +1,5 @@
 #!/bin/bash
-#$ -l rt_AF=1
+#$ -l rt_C.large=1
 #$ -l h_rt=0:30:00
 #$ -j y
 #$ -o outputs/tokenize/
