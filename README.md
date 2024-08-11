@@ -10,6 +10,270 @@ Megatron-LM & Megatron-Core
 
 <div align="left">
 
+# 14.3章 LLMの分散並列学習
+
+## 14.3.1 Megatron-LM の環境構築
+
+### Python 環境の用意
+
+pyenvのインストール
+
+```bash
+curl https://pyenv.run | bash
+```
+
+`.bashrc`に以下を書き込みます。
+
+```bash
+export PYENV_ROOT="$HOME/.pyenv"
+command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
+```
+
+Pythonのインストール
+```bash
+pyenv install 3.11.9
+pyenv global 3.11.9
+```
+
+### gcc の用意
+
+gcc のダウンロード
+
+```bash
+wget https://ftp.gnu.org/gnu/gcc/gcc-11.4.0/gcc-11.4.0.tar.gz
+tar -zxvf gcc-11.4.0.tar.gz
+```
+
+ABCIにて計算ノードを確保
+
+```bash
+qrsh -g <group-name> -l rt_C.large=1 -l h_rt=3:00:00
+```
+
+gccのインストール
+```bash
+cd gcc-11.4.0
+mkdir build
+cd build
+../configure --prefix=/path/to/install/gcc --disable-multilib
+make -j 16
+make install
+```
+
+計算ノードからexit
+
+```bash
+exit
+```
+
+### CUDA Toolkit、cuDNN、NCCLの環境の用意
+
+ABCIの`home`領域、または`group`領域にて以下を実行します。
+cuDNNのためにmodulefileの準備をします。
+
+```bash
+mkdir -p modules/modulefiles/cudnn
+cd modules/modulefiles/cudnn
+
+mkdir -p cuda-12.1
+cd cuda-12.1
+```
+
+`modules/modulefiles/cudnn/cuda-12.1/8.9.7`を編集します。
+
+```bash
+#%Module1.0
+##
+## cuDNN 8.9.7 modulefile
+##
+proc ModulesHelp { } {
+    puts stderr "This module adds cuDNN 8.9.7 to your environment variables."
+}
+module-whatis "Sets up cuDNN 8.9.7 in your environment"
+
+set version 8.9.7
+set cudnn_root /apps/cudnn/8.9.7/cuda12.1
+
+prepend-path    LD_LIBRARY_PATH     $cudnn_root/lib64
+prepend-path    LIBRARY_PATH        $cudnn_root/lib64
+prepend-path    CPATH               $cudnn_root/include
+setenv          CUDNN_PATH          $cudnn_root
+setenv          CUDNN_INCLUDE_DIR   $cudnn_root/include
+setenv          CUDNN_LIBRARY_DIR   $cudnn_root/lib64
+setenv          CUDNN_ROOT_DIR      $cudnn_root/
+```
+次にgcc の準備をします。
+
+```bash
+cd modules/modulefiles
+mkdir -p gcc/
+cd gcc/
+```
+
+`modules/modulefiles/gcc/11.4.0`を編集して、以下を記述します。
+
+```bash
+#%Module1.0
+#
+module-whatis "GCC Compiler 11.4.0"
+
+set gcc_version 11.4.0
+set gcc_prefix /path/to/gcc
+
+prepend-path PATH $gcc_prefix/bin
+prepend-path LD_LIBRARY_PATH $gcc_prefix/lib
+prepend-path LD_LIBRARY_PATH $gcc_prefix/lib64
+# Set GCC include directory
+prepend-path C_INCLUDE_PATH $gcc_prefix/include
+prepend-path CPLUS_INCLUDE_PATH $gcc_prefix/include
+```
+
+作成したmodulefileを読み込めるように`.bashrc`に以下を書き込みます。
+
+```bash
+module use /path/to/modules/modulefiles/
+```
+
+`source ~/.bashrc`後に以下の方法で`module load`できるようになります。
+
+```bash
+source /etc/profile.d/modules.sh
+module use /path/to/modules/modulefiles/
+
+module load cuda/12.1/12.1.1
+module load cudnn/cuda-12.1/8.9.7
+module load nccl/2.17/2.17.1-1
+module load hpcx/2.12
+module load gcc/11.4.0
+```
+
+### ライブラリのインストール
+
+仮想環境を作成します。
+
+```bash
+python -m venv .env
+source .env/bin/activate
+```
+
+次に計算ノードを確保します。
+
+```bash
+qrsh -g <ABCI-group-name> -l rt_AF=1 -l h_rt=3:00:00
+```
+
+必要なライブラリをEnvironemt Modulesを利用して読み込みます。
+
+```bash
+source /etc/profile.d/modules.sh
+module use /path/to/modules/modulefiles/
+
+module load cuda/12.1/12.1.1
+module load cudnn/cuda-12.1/8.9.7
+module load nccl/2.17/2.17.1-1
+module load hpcx/2.12
+module load gcc/11.4.0
+```
+
+以下のコマンドでPythonライブラリをインストールします。
+
+```bash
+cd /path/to/llm-book-Megatron-LM
+source .env/bin/activate
+
+pip install --upgrade pip
+pip install --upgrade wheel cmake ninja
+pip install -r requirements.txt
+pip install zarr tensorstore
+```
+
+### NVIDIA Apex のインストール
+
+以下のコマンドでPyTorchが依存しているCUDA Toolkitのバージョンを確認します。
+
+```bash
+python -c "import torch; print(torch.version.cuda)"
+```
+
+ApexをGitHubリポジトリよりダウンロードします。
+```bash
+git clone https://github.com/NVIDIA/apex
+```
+
+以下のコマンドでインストールを行います。
+
+```bash
+cd apex
+
+pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
+```
+
+### TransformerEngineのインストール
+
+```bash
+pip install git+https://github.com/NVIDIA/TransformerEngine.git@v1.6
+```
+
+### FlashAttentionのインストール
+
+```bash
+pip uninstall flash-attn
+
+git clone git@github.com:Dao-AILab/flash-attention.git
+cd flash-attention
+git checkout v2.4.2
+pip install -e .
+```
+
+### Megatron-LMの準備
+
+```bash
+git clone git@github.com:ghmagazine/llm-book-Megatron-LM.git
+```
+
+※仮想環境のパスなどは各自の環境に合わせて変更してください。
+
+pyenvにてインストールしたPython 3.11.9を使う前提のMakefileになっていますので、異なる環境の方は`megatron/core/datasets/Makefile`を変更してください。
+
+```bash
+cd llm-book-Megatron-LM
+
+cd megatron/core/datasets
+make
+```
+
+`helpers.cpython-311-x86_64-linux-gnu.so`が生成されます。
+
+計算ノードの確保を終了します。`exit`にて終了してください。
+
+## 14.3.2 学習データの用意
+
+学習に利用する日本語Wikipediaをダウンロードします。
+
+```bash
+git clone git@hf.co:datasets/llm-book/japanese-wikipedia
+```
+
+計算ノードを確保します。
+
+```bash
+qrsh -g <group-name> -l rt_C.large=1 -l h_rt=3:00:00
+```
+
+`scripts/abci/tokenize.sh`を環境に合わせてパスを変更してください。
+
+`bash scripts/abci/tokenize.sh`などで実行してください。これにより前処理が完了します。
+
+### 14.3.3
+
+以下のコマンドでジョブを投入することができます。
+
+```bash
+qsub -g <group-name> scripts/abci/Llama-2-7b/llama-2-7b-tp2-pp2.sh
+```
+
 # Latest News
 - **[2024/1 Announcement]** NVIDIA has released the core capabilities in **Megatron-LM** into [**Megatron-Core**](https://github.com/NVIDIA/Megatron-LM/tree/main/megatron/core) in this repository. Megatron-Core expands upon Megatron-LM's GPU-optimized techniques with more cutting-edge innovations on system-level optimizations, featuring composable and modular APIs. Explore the [Megatron-Core intro](#megatron-core) for more details.
 
