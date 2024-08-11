@@ -266,7 +266,7 @@ qrsh -g <group-name> -l rt_C.large=1 -l h_rt=3:00:00
 
 `bash scripts/abci/tokenize.sh`などで実行してください。これにより前処理が完了します。
 
-### 14.3.3
+## 14.3.3 Llama 2の分散並列学習
 
 以下のコマンドでジョブを投入することができます。
 
